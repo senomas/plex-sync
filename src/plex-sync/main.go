@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"strings"
 	"sync"
 
@@ -13,6 +14,7 @@ import (
 
 	"code.senomas.com/go/plexapi"
 	"code.senomas.com/go/util"
+	log "github.com/Sirupsen/logrus"
 )
 
 // Repo struct
@@ -31,13 +33,19 @@ func (repo *Repo) init() {
 	util.Panicf("Open DB %v", err)
 
 	_, err = repo.db.Exec("create table if not exists media(guid text primary key, title text, addedAt int, updatedAt int, viewCount int, lastViewedAt int)")
-	util.Panicf("Create table guid %v", err)
+	if err != nil {
+		log.Fatal("Failed to create table media", err)
+	}
 
 	repo.findMedia, err = repo.db.Prepare("select title, addedAt, updatedAt, viewCount, lastViewedAt from media where guid = ?")
-	util.Panicf("Prepare findMedia %v", err)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	repo.insertMedia, err = repo.db.Prepare("insert or replace into media(guid, title, addedAt, updatedAt, viewCount, lastViewedAt) values(?, ?, ?, ?, ?, ?)")
-	util.Panicf("Prepare insertMedia %v", err)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func (repo *Repo) getMedia(guid string) *plexapi.Video {
@@ -67,44 +75,56 @@ func (repo *Repo) close() {
 }
 
 func main() {
+	log.SetOutput(os.Stderr)
+	log.SetLevel(log.InfoLevel)
+	// log.SetLevel(log.DebugLevel)
+
 	repo := Repo{}
 	repo.init()
 	defer repo.close()
 
-	api := plexapi.API{}
+	api := plexapi.API{HTTP: plexapi.HTTPConfig{Timeout: 30, WorkerSize: 10}}
 	cfg, _ := ioutil.ReadFile("config.yaml")
 	yaml.Unmarshal(cfg, &api)
 
 	var wg sync.WaitGroup
-	out := make(chan plexapi.Video)
+	out := make(chan interface{})
 
 	servers, err := api.GetServers()
 	util.Panicf("GetServers failed %v", err)
 	for _, server := range servers {
-		server.GetVids(&wg, out)
+		server.GetVideos(&wg, out)
 	}
 
 	var videos []plexapi.Video
 	go func() {
-		for v := range out {
-			if v.GUID != "" && !strings.HasPrefix(v.GUID, "local://") {
-				videos = append(videos, v)
-				media := repo.getMedia(v.GUID)
-				if media != nil {
-					if media.LastViewedAt != "" {
-						fmt.Printf("MEDIA %s %s %s SKIP\n", v.Server.Name, v.GUID, v.Title)
-					} else {
-						if v.LastViewedAt != "" {
-							fmt.Printf("MEDIA %s %s %s UPDATE DB\n", v.Server.Name, v.GUID, v.Title)
-							repo.save(v)
+		for o := range out {
+			switch o := o.(type) {
+			case plexapi.Video:
+				v := plexapi.Video(o)
+				if v.GUID != "" && !strings.HasPrefix(v.GUID, "local://") {
+					// log.WithField("server", v.Server.Name).WithField("guid", v.GUID).WithField("title", v.Title).WithField("viewCount", v.ViewCount).WithField("lastViewedAt", v.LastViewedAt).Info("MEDIA")
+
+					videos = append(videos, v)
+					media := repo.getMedia(v.GUID)
+					if media != nil {
+						if media.LastViewedAt != "" {
+							log.WithField("server", v.Server.Name).WithField("guid", v.GUID).WithField("title", v.Title).Info("SKIP")
 						} else {
-							fmt.Printf("MEDIA %s %s %s SKIP\n", v.Server.Name, v.GUID, v.Title)
+							if v.LastViewedAt != "" {
+								log.WithField("server", v.Server.Name).WithField("guid", v.GUID).WithField("title", v.Title).Info("UPDATE DB")
+								repo.save(v)
+							} else {
+								log.WithField("server", v.Server.Name).WithField("guid", v.GUID).WithField("title", v.Title).Info("SKIP")
+							}
 						}
+					} else {
+						repo.save(v)
+						log.WithField("server", v.Server.Name).WithField("guid", v.GUID).WithField("title", v.Title).Info("SAVE")
 					}
-				} else {
-					repo.save(v)
-					fmt.Printf("MEDIA %s %s %s SAVE\n", v.Server.Name, v.GUID, v.Title)
 				}
+			default:
+				fmt.Printf("Type of o is %T. Value %v", o, o)
 			}
 		}
 	}()
@@ -118,12 +138,10 @@ func main() {
 				if media.LastViewedAt != "" {
 					if v.LastViewedAt == "" {
 						v.Server.MarkWatched(v)
-						fmt.Printf("MEDIA %s %s %s MARKED WATCHED\n", v.Server.Name, v.GUID, v.Title)
+						log.WithField("server", v.Server.Name).WithField("guid", v.GUID).WithField("title", v.Title).Info("MARKED WATCHED")
 					}
 				}
 			}
 		}
 	}
-
-	fmt.Println("DONE")
 }

@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"code.senomas.com/go/util"
+	log "github.com/Sirupsen/logrus"
 )
 
 // Server struct
@@ -41,10 +42,10 @@ func (server *Server) setHeader(req *http.Request) {
 }
 
 func (server *Server) getContainer(url string) (container MediaContainer, err error) {
-	fmt.Printf("GET %s\n", url)
+	log.WithField("url", url).Debugf("GET")
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		fmt.Println("  NewRequest", err)
+		log.WithField("url", url).WithError(err).Errorf("http.GET")
 		return container, err
 	}
 	server.setHeader(req)
@@ -55,17 +56,13 @@ func (server *Server) getContainer(url string) (container MediaContainer, err er
 	}
 	defer resp.Body.Close()
 
-	// fmt.Println("  Response", resp.Status)
-	if resp.StatusCode == 404 {
-		return container, fmt.Errorf(resp.Status)
-	}
+	log.WithField("url", url).WithField("status", resp.Status).Debugf("RESP")
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		log.WithField("url", url).WithError(err).Errorf("RESP")
 		return container, err
 	}
-
-	// fmt.Printf("BODY %s\n%s\n", url, body)
 
 	err = xml.Unmarshal(body, &container)
 	return container, err
@@ -111,10 +108,11 @@ func (server *Server) GetDirectories() (directories []Directory, err error) {
 	return directories, err
 }
 
-// GetVids func
-func (server *Server) GetVids(wg *sync.WaitGroup, out chan<- Video) {
+// GetVideos func
+func (server *Server) GetVideos(wg *sync.WaitGroup, out chan<- interface{}) {
 	cs := make(chan MediaContainer)
 	dirs := make(chan Directory)
+
 	wg.Add(1)
 	go func() {
 		container, err := server.GetContainer("/library/sections")
@@ -124,7 +122,7 @@ func (server *Server) GetVids(wg *sync.WaitGroup, out chan<- Video) {
 			wg.Done()
 		}
 	}()
-	for i := 0; i < 20; i++ {
+	for i, il := 0, server.api.HTTP.WorkerSize; i < il; i++ {
 		go func() {
 			for c := range cs {
 				func() {
@@ -169,39 +167,6 @@ func (server *Server) GetVids(wg *sync.WaitGroup, out chan<- Video) {
 	}
 }
 
-// GetVideos func
-func (server *Server) GetVideos() (videos []Video, err error) {
-	dirs, err := server.GetDirectories()
-	if err != nil {
-		return videos, err
-	}
-	for _, dir := range dirs {
-		var container MediaContainer
-		container, err = server.GetContainer(fmt.Sprintf("/library/sections/%v/all", dir.Key))
-		// if err != nil {
-		// 	return videos, err
-		// }
-		for _, v := range container.Videos {
-			videos = append(videos, v)
-		}
-		for _, dshow := range container.Directories {
-			var show MediaContainer
-			show, err = server.GetContainer(dshow.Key)
-			for _, v := range show.Videos {
-				videos = append(videos, v)
-			}
-			for _, dseason := range show.Directories {
-				var episode MediaContainer
-				episode, err = server.GetContainer(dseason.Key)
-				for _, v := range episode.Videos {
-					videos = append(videos, v)
-				}
-			}
-		}
-	}
-	return videos, err
-}
-
 // GetMeta func
 func (server *Server) GetMeta(video Video) (meta Video, err error) {
 	if video.GUID != "" {
@@ -218,32 +183,7 @@ func (server *Server) GetMeta(video Video) (meta Video, err error) {
 // MarkWatched func
 func (server *Server) MarkWatched(video Video) error {
 	url := server.host + "/:/scrobble?identifier=com.plexapp.plugins.library&key=" + video.RatingKey
-	// fmt.Printf("URL: %s\n", url)
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return err
-	}
-	server.setHeader(req)
-
-	resp, err := server.api.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	// body, err := ioutil.ReadAll(resp.Body)
-	// if err != nil {
-	// 	return err
-	// }
-	// fmt.Printf("RESULT\n%s\n", body)
-
-	return err
-}
-
-// MarkUnwatched func
-func (server *Server) MarkUnwatched(video Video) error {
-	url := server.host + "/:/unscrobble?identifier=com.plexapp.plugins.library&key=" + video.RatingKey
-	fmt.Printf("URL: %s\n", url)
+	log.WithField("url", url).WithField("server", server.Name).Debug("MarkWatched.GET")
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
@@ -260,8 +200,33 @@ func (server *Server) MarkUnwatched(video Video) error {
 	if err != nil {
 		return err
 	}
+	log.WithField("url", url).WithField("server", server.Name).Debugf("MarkWatched.RESULT\n%s", body)
 
-	fmt.Printf("RESULT\n%s\n", body)
+	return err
+}
+
+// MarkUnwatched func
+func (server *Server) MarkUnwatched(video Video) error {
+	url := server.host + "/:/unscrobble?identifier=com.plexapp.plugins.library&key=" + video.RatingKey
+	log.WithField("url", url).WithField("server", server.Name).Debug("GET")
+	req, err := http.NewRequest("MarkUnwatched.GET", url, nil)
+	if err != nil {
+		return err
+	}
+	server.setHeader(req)
+
+	resp, err := server.api.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	log.WithField("url", url).WithField("server", server.Name).Debugf("MarkUnwatched.RESULT\n%s", body)
 
 	return err
 }

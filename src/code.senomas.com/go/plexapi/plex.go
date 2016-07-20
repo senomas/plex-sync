@@ -13,11 +13,18 @@ import (
 
 // API struct
 type API struct {
-	User     string `yaml:"user"`
-	Password string `yaml:"password,flow"`
+	User     string     `yaml:"user"`
+	Password string     `yaml:"password"`
+	HTTP     HTTPConfig `yaml:"http"`
 	client   *http.Client
 	userInfo UserInfo
 	servers  map[string]*Server
+}
+
+// HTTPConfig struct
+type HTTPConfig struct {
+	Timeout    time.Duration `yaml:"timeout"`
+	WorkerSize int           `yaml:"workerSize"`
 }
 
 // UserInfo struct
@@ -49,6 +56,13 @@ type MediaContainer struct {
 	MachineIdentifier             string      `xml:"machineIdentifier,attr"`
 }
 
+// Progress struct
+type Progress struct {
+	Server  string
+	Command string
+	Delta   int
+}
+
 func (api *API) setHeader(req *http.Request) {
 	req.Header.Add("X-Plex-Product", "plex-sync")
 	req.Header.Add("X-Plex-Version", "1.0.0")
@@ -66,7 +80,7 @@ func (api *API) login() error {
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
 		api.client = &http.Client{
-			Timeout:   time.Duration(30 * time.Second),
+			Timeout:   time.Duration(time.Second * api.HTTP.Timeout),
 			Transport: tr,
 			Jar:       cookieJar,
 		}
