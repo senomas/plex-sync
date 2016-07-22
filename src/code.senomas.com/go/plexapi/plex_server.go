@@ -68,6 +68,35 @@ func (server *Server) getContainer(url string) (container MediaContainer, err er
 	return container, err
 }
 
+// Perform func
+func (server *Server) Perform(cmd, path string) error {
+	url := server.host + path
+	log.WithField("url", url).Debugf(cmd)
+	req, err := http.NewRequest(cmd, url, nil)
+	if err != nil {
+		log.WithField("url", url).WithError(err).Errorf("http.%s", cmd)
+		return err
+	}
+	server.setHeader(req)
+
+	resp, err := server.api.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	log.WithField("url", url).WithField("status", resp.Status).Debugf("RESP")
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.WithField("url", url).WithError(err).Errorf("RESP")
+		return err
+	}
+
+	log.Debugf("RESP BODY\n%s", body)
+	return err
+}
+
 // GetContainer func
 func (server *Server) GetContainer(path string) (container MediaContainer, err error) {
 	if server.host != "" {
@@ -129,15 +158,30 @@ func (server *Server) GetVideos(wg *sync.WaitGroup, out chan<- interface{}) {
 					defer wg.Done()
 					for _, d := range c.Directories {
 						wg.Add(1)
+						d.Paths = c.Paths
 						dirs <- d
 					}
 					for _, v := range c.Videos {
 						if v.GUID == "" {
 							meta, err := server.GetMeta(v)
 							util.Panicf("GetMeta failed %v", err)
-							v.GUID = meta.GUID
+							v = meta
 						}
 						v.Server = server
+						v.Paths = c.Paths
+						var idx []string
+						for _, px := range v.Media.Parts {
+							for _, kk := range v.Paths {
+								if strings.HasPrefix(px.File, kk) {
+									idx = append(idx, px.File[len(kk):])
+								}
+							}
+						}
+						if len(idx) > 0 {
+							v.FID = strings.Join(idx, ":")
+						} else {
+							v.FID = v.GUID
+						}
 						out <- v
 					}
 				}()
@@ -152,12 +196,24 @@ func (server *Server) GetVideos(wg *sync.WaitGroup, out chan<- interface{}) {
 						cc, err := server.GetContainer(d.Key)
 						if err == nil {
 							wg.Add(1)
+							cc.Paths = d.Paths
+							for _, l := range d.Locations {
+								if l.Path != "" {
+									cc.Paths = append(cc.Paths, l.Path)
+								}
+							}
 							cs <- cc
 						}
 					} else {
 						cc, err := server.GetContainer(fmt.Sprintf("/library/sections/%v/all", d.Key))
 						if err == nil {
 							wg.Add(1)
+							cc.Paths = d.Paths
+							for _, l := range d.Locations {
+								if l.Path != "" {
+									cc.Paths = append(cc.Paths, l.Path)
+								}
+							}
 							cs <- cc
 						}
 					}

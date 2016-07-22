@@ -8,6 +8,7 @@ import (
 // Directory struct
 type Directory struct {
 	server     *Server
+	Paths      []string   `xml:"-"`
 	XMLName    xml.Name   `xml:"Directory"`
 	Locations  []Location `xml:"Location"`
 	Count      int        `xml:"count,attr"`

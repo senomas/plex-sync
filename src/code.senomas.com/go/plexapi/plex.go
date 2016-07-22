@@ -5,10 +5,13 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v2"
 )
 
 // API struct
@@ -36,6 +39,7 @@ type UserInfo struct {
 
 // MediaContainer struct
 type MediaContainer struct {
+	Paths                         []string    `xml:"-"`
 	XMLName                       xml.Name    `xml:"MediaContainer"`
 	Servers                       []Server    `xml:"Server"`
 	Directories                   []Directory `xml:"Directory"`
@@ -61,6 +65,15 @@ type Progress struct {
 	Server  string
 	Command string
 	Delta   int
+}
+
+// LoadConfig func
+func (api *API) LoadConfig(name string) {
+	cfg, err := ioutil.ReadFile(name)
+	if err != nil {
+		log.Fatal("Unable to load config", err)
+	}
+	yaml.Unmarshal(cfg, &api)
 }
 
 func (api *API) setHeader(req *http.Request) {
