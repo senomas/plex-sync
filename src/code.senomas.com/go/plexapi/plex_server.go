@@ -194,13 +194,11 @@ func (server *Server) GetVideos(wg *sync.WaitGroup, out chan<- interface{}) {
 				func() {
 					defer wg.Done()
 					for _, d := range c.Directories {
-						if d.Type == "movie" {
-							wg.Add(1)
-							d.Paths = c.Paths
-							d.Keys = c.Keys
-							d.Keys = append(d.Keys, KeyInfo{Key: d.Key, Type: d.Type, Title: d.Title})
-							dirs <- d
-						}
+						wg.Add(1)
+						d.Paths = c.Paths
+						d.Keys = c.Keys
+						d.Keys = append(d.Keys, KeyInfo{Key: d.Key, Type: d.Type, Title: d.Title})
+						dirs <- d
 					}
 					for _, v := range c.Videos {
 						// if v.GUID == "" {

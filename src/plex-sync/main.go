@@ -87,8 +87,6 @@ func main() {
 						bb := bvid.Get([]byte(v.FID))
 						if bb != nil {
 							json.Unmarshal(bb, data)
-						} else {
-							log.Warn("NO DATA ", v.FID)
 						}
 
 						vx, ok := data.Videos[vsn]
