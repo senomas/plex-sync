@@ -40,6 +40,7 @@ type UserInfo struct {
 // MediaContainer struct
 type MediaContainer struct {
 	Paths                         []string    `xml:"-"`
+	Keys                          []KeyInfo   `xml:"-"`
 	XMLName                       xml.Name    `xml:"MediaContainer"`
 	Servers                       []Server    `xml:"Server"`
 	Directories                   []Directory `xml:"Directory"`
@@ -58,6 +59,13 @@ type MediaContainer struct {
 	TranscoderVideoResolutions    string      `xml:"transcoderVideoResolutions,attr"`
 	FriendlyName                  string      `xml:"friendlyName,attr"`
 	MachineIdentifier             string      `xml:"machineIdentifier,attr"`
+}
+
+// KeyInfo struct
+type KeyInfo struct {
+	Key   string
+	Type  string
+	Title string
 }
 
 // Progress struct

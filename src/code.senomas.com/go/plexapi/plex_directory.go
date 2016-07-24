@@ -1,13 +1,10 @@
 package plexapi
 
-import (
-	"encoding/xml"
-	"fmt"
-)
+import "encoding/xml"
 
 // Directory struct
 type Directory struct {
-	server     *Server
+	Keys       []KeyInfo  `xml:"-"`
 	Paths      []string   `xml:"-"`
 	XMLName    xml.Name   `xml:"Directory"`
 	Locations  []Location `xml:"Location"`
@@ -34,18 +31,4 @@ type Location struct {
 	XMLName xml.Name `xml:"Location"`
 	ID      int      `xml:"id,attr"`
 	Path    string   `xml:"path,attr"`
-}
-
-// GetContents func
-func (dir *Directory) GetContents() error {
-	var container MediaContainer
-	var err error
-	for _, loc := range dir.Locations {
-		container, err = dir.server.GetContainer(fmt.Sprintf("/library/sections/%v/all", loc.ID))
-		if err != nil {
-			return err
-		}
-		fmt.Printf("DATA %v\n%+v\n\n", loc.ID, container)
-	}
-	return err
 }

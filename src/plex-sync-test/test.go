@@ -9,7 +9,7 @@ import (
 	log "github.com/Sirupsen/logrus"
 )
 
-func mainx() {
+func main() {
 	log.SetOutput(os.Stderr)
 	log.SetLevel(log.DebugLevel)
 
@@ -26,7 +26,8 @@ func mainx() {
 	// 	log.Debug("SERVER ", util.JSONPrettyPrint(s))
 	// }
 
-	server, _ := api.GetServer("My SHIELD Android TV")
+	server, _ := api.GetServer("senomas")
+	// server, _ := api.GetServer("My SHIELD Android TV")
 	log.Debug("SERVER ", server)
 
 	// c, _ := server.GetContainer("/library/sections")

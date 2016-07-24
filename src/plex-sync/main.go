@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"os"
 	"strconv"
@@ -14,63 +13,6 @@ import (
 	"code.senomas.com/go/util"
 	log "github.com/Sirupsen/logrus"
 )
-
-// Repo struct
-type Repo struct {
-	db          *sql.DB
-	findGUID    *sql.Stmt
-	insertGUID  *sql.Stmt
-	findMedia   *sql.Stmt
-	insertMedia *sql.Stmt
-}
-
-func (repo *Repo) init() {
-	var err error
-
-	repo.db, err = sql.Open("sqlite3", "./plex.db")
-	util.Panicf("Open DB %v", err)
-
-	_, err = repo.db.Exec("create table if not exists media(id text primary key, guid text, title text, addedAt int, updatedAt int, viewCount int, viewOffset int, lastViewedAt int)")
-	if err != nil {
-		log.Fatal("Failed to create table media", err)
-	}
-
-	repo.findMedia, err = repo.db.Prepare("select guid, title, addedAt, updatedAt, viewCount, viewOffset, lastViewedAt from media where id = ?")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	repo.insertMedia, err = repo.db.Prepare("insert or replace into media(id, guid, title, addedAt, updatedAt, viewCount, viewOffset, lastViewedAt) values(?, ?, ?, ?, ?, ?, ?, ?)")
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func (repo *Repo) getMedia(id string) *plexapi.Video {
-	rows, err := repo.findMedia.Query(id)
-	util.Panicf("getMedia %v", err)
-	defer rows.Close()
-
-	if !rows.Next() {
-		return nil
-	}
-
-	var video plexapi.Video
-	video.FID = id
-	rows.Scan(&video.GUID, &video.Title, &video.AddedAt, &video.UpdatedAt, &video.ViewCount, &video.ViewOffset, &video.LastViewedAt)
-	return &video
-}
-
-func (repo *Repo) save(v plexapi.Video) {
-	_, err := repo.insertMedia.Exec(v.FID, v.GUID, v.Title, v.AddedAt, v.UpdatedAt, v.ViewCount, v.ViewOffset, v.LastViewedAt)
-	util.Panicf("InsertMedia failed %v", err)
-}
-
-func (repo *Repo) close() {
-	repo.findMedia.Close()
-	repo.insertMedia.Close()
-	repo.db.Close()
-}
 
 func atoi(v string) int {
 	if v == "" {
@@ -88,9 +30,12 @@ func main() {
 	log.SetLevel(log.InfoLevel)
 	// log.SetLevel(log.DebugLevel)
 
-	repo := Repo{}
-	repo.init()
-	defer repo.close()
+	repo := plexapi.Repo{}
+	err := repo.Open()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer repo.Close()
 
 	api := plexapi.API{HTTP: plexapi.HTTPConfig{Timeout: 30, WorkerSize: 10}}
 	api.LoadConfig("config.yaml")
@@ -114,16 +59,19 @@ func main() {
 					// log.WithField("server", v.Server.Name).WithField("guid", v.GUID).WithField("title", v.Title).WithField("viewCount", v.ViewCount).WithField("lastViewedAt", v.LastViewedAt).Info("MEDIA")
 
 					videos = append(videos, v)
-					media := repo.getMedia(v.FID)
+					media, err := repo.GetMedia(v.FID)
+					if err != nil {
+						log.Warn("Error GetMedia ", v.FID, " ", err)
+					}
 					if media != nil {
 						if atoi(v.UpdatedAt) > atoi(media.UpdatedAt) {
-							repo.save(v)
+							repo.Save(&v)
 							log.WithField("server", v.Server.Name).WithField("key", v.Key).WithField("id", v.FID).Info("UPDATE")
 						} else {
 							log.WithField("server", v.Server.Name).WithField("key", v.Key).WithField("id", v.FID).Info("SKIP")
 						}
 					} else {
-						repo.save(v)
+						repo.Save(&v)
 						log.WithField("server", v.Server.Name).WithField("key", v.Key).WithField("id", v.FID).Info("SAVE")
 					}
 				}
@@ -138,7 +86,10 @@ func main() {
 
 	for _, v := range videos {
 		if v.FID != "" && !strings.HasPrefix(v.FID, "local://") {
-			media := repo.getMedia(v.FID)
+			media, err := repo.GetMedia(v.FID)
+			if err != nil {
+				log.Warn("Error GetMedia ", v.FID, " ", err)
+			}
 			if media != nil {
 				if atoi(v.UpdatedAt) < atoi(media.UpdatedAt) {
 					if media.LastViewedAt != "" && v.LastViewedAt == "" {

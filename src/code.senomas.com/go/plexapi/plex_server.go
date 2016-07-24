@@ -131,7 +131,7 @@ func (server *Server) GetDirectories() (directories []Directory, err error) {
 	}
 	for _, d := range container.Directories {
 		nd := d
-		nd.server = server
+		// nd.server = server
 		directories = append(directories, nd)
 	}
 	return directories, err
@@ -159,6 +159,8 @@ func (server *Server) GetVideos(wg *sync.WaitGroup, out chan<- interface{}) {
 					for _, d := range c.Directories {
 						wg.Add(1)
 						d.Paths = c.Paths
+						d.Keys = c.Keys
+						d.Keys = append(d.Keys, KeyInfo{Key: d.Key, Type: d.Type, Title: d.Title})
 						dirs <- d
 					}
 					for _, v := range c.Videos {
@@ -169,6 +171,7 @@ func (server *Server) GetVideos(wg *sync.WaitGroup, out chan<- interface{}) {
 						}
 						v.Server = server
 						v.Paths = c.Paths
+						v.Keys = c.Keys
 						var idx []string
 						for _, px := range v.Media.Parts {
 							for _, kk := range v.Paths {
@@ -196,6 +199,7 @@ func (server *Server) GetVideos(wg *sync.WaitGroup, out chan<- interface{}) {
 						cc, err := server.GetContainer(d.Key)
 						if err == nil {
 							wg.Add(1)
+							cc.Keys = d.Keys
 							cc.Paths = d.Paths
 							for _, l := range d.Locations {
 								if l.Path != "" {
@@ -208,6 +212,7 @@ func (server *Server) GetVideos(wg *sync.WaitGroup, out chan<- interface{}) {
 						cc, err := server.GetContainer(fmt.Sprintf("/library/sections/%v/all", d.Key))
 						if err == nil {
 							wg.Add(1)
+							cc.Keys = d.Keys
 							cc.Paths = d.Paths
 							for _, l := range d.Locations {
 								if l.Path != "" {
