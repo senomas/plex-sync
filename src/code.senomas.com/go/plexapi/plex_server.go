@@ -71,12 +71,10 @@ func (server *Server) getContainer(url string) (container MediaContainer, err er
 // Check func
 func (server *Server) Check() {
 	var urls []string
-	urls = append(urls, fmt.Sprintf("https://%s:32400", server.Address))
-	urls = append(urls, fmt.Sprintf("https://%s:32400", server.Host))
+	urls = append(urls, fmt.Sprintf("https://%s:%v", server.Address, server.Port))
 	for _, la := range strings.Split(server.LocalAddresses, ",") {
 		urls = append(urls, fmt.Sprintf("https://%s:32400", la))
 	}
-	log.Debugf("CHECK %s", util.JSONPrettyPrint(urls))
 
 	var checkOnce util.CheckOnce
 	var wg sync.WaitGroup
@@ -92,26 +90,19 @@ func (server *Server) Check() {
 
 			if !checkOnce.IsDone() {
 				log.Debugf("CHECK %s %s", server.Name, url)
-				req, err := http.NewRequest("GET", url, nil)
+				c, err := server.getContainer(url)
 				if err != nil {
 					log.Debugf("ERROR GET %s '%s': %v", server.Name, url, err)
 					return err
 				}
-				server.setHeader(req)
-				resp, err := server.api.client.Do(req)
-				if err != nil {
-					log.Debugf("ERROR GET %s '%s': %v", server.Name, url, err)
-					return err
-				}
-				defer resp.Body.Close()
 
-				log.Debugf("RESP %s '%s' %s", server.Name, url, resp.Status)
-
-				if resp.StatusCode == 200 {
-					checkOnce.Done(func() {
-						out <- url
-					})
+				if c.FriendlyName != server.Name {
+					log.Fatal("WRONG SERVER ", c.FriendlyName, "  ", server.Name)
 				}
+				// log.Debugf("RESP BODY\n%s", util.JSONPrettyPrint(c))
+				checkOnce.Done(func() {
+					out <- url
+				})
 			}
 			return nil
 		}()
