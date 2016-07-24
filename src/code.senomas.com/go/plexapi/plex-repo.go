@@ -22,7 +22,7 @@ func (repo *Repo) Open() (err error) {
 	repo.db, err = sql.Open("sqlite3", "./plex.db")
 	util.Panicf("Open DB %v", err)
 
-	_, err = repo.db.Exec("create table if not exists media(id text primary key, json text, title text, addedAt int, updatedAt int, viewCount int, viewOffset int, lastViewedAt int)")
+	_, err = repo.db.Exec("create table if not exists media(id text primary key, guid text, title text, addedAt int, updatedAt int, viewCount int, viewOffset int, lastViewedAt int)")
 	if err != nil {
 		return fmt.Errorf("Failed to create table media %v", err)
 	}
