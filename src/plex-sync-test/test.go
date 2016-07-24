@@ -14,13 +14,6 @@ func main() {
 
 	log.Debug("TEST")
 
-	repo := plexapi.Repo{}
-	err := repo.Open()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer repo.Close()
-
 	api := plexapi.API{HTTP: plexapi.HTTPConfig{Timeout: 30, WorkerSize: 10}}
 	api.LoadConfig("config.yaml")
 
@@ -44,16 +37,16 @@ func main() {
 	// server.Perform("GET", "/:/progress?key=4980&identifier=com.plexapp.plugins.library&time=100000")
 	// server.Perform("PUT", "/library/metadata/4980?viewOffset.value=100")
 
-	server.MarkUnwatched("4980")
-
-	content, _ := server.GetContainer("/library/metadata/4980")
-	v := content.Videos[0]
-
-	m, _ := repo.GetMedia("/Batman v Superman Dawn of Justice (2016)/Batman v Superman Dawn of Justice.mkv")
-
-	log.Debugf("UPDATE AT       %v : %v  %v", m.UpdatedAt, v.UpdatedAt, m.UpdatedAt == v.UpdatedAt)
-	log.Debugf("LAST VIEWED AT  %v : %v", m.LastViewedAt, v.LastViewedAt)
-	log.Debugf("VIEW OFFSET     %v : %v", m.ViewOffset, v.ViewOffset)
+	// server.MarkUnwatched("4980")
+	//
+	// content, _ := server.GetContainer("/library/metadata/4980")
+	// v := content.Videos[0]
+	//
+	// m, _ := repo.GetMedia("/Batman v Superman Dawn of Justice (2016)/Batman v Superman Dawn of Justice.mkv")
+	//
+	// log.Debugf("UPDATE AT       %v : %v  %v", m.UpdatedAt, v.UpdatedAt, m.UpdatedAt == v.UpdatedAt)
+	// log.Debugf("LAST VIEWED AT  %v : %v", m.LastViewedAt, v.LastViewedAt)
+	// log.Debugf("VIEW OFFSET     %v : %v", m.ViewOffset, v.ViewOffset)
 
 	// content, _ = server.GetContainer("/library/metadata/4979")
 	// log.Debug("CONTENT ", util.JSONPrettyPrint(content))

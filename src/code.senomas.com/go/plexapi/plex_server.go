@@ -71,10 +71,12 @@ func (server *Server) getContainer(url string) (container MediaContainer, err er
 // Check func
 func (server *Server) Check() {
 	var urls []string
+	urls = append(urls, fmt.Sprintf("https://%s:32400", server.Address))
 	urls = append(urls, fmt.Sprintf("https://%s:32400", server.Host))
 	for _, la := range strings.Split(server.LocalAddresses, ",") {
 		urls = append(urls, fmt.Sprintf("https://%s:32400", la))
 	}
+	log.Debugf("CHECK %s", util.JSONPrettyPrint(urls))
 
 	var checkOnce util.CheckOnce
 	var wg sync.WaitGroup

@@ -51,11 +51,13 @@ func main() {
 
 	var wg sync.WaitGroup
 	out := make(chan interface{})
+	counts := make(map[string]int)
 
 	servers, err := api.GetServers()
 	util.Panicf("GetServers failed %v", err)
 	for _, server := range servers {
 		server.GetVideos(&wg, out)
+		counts["Video '"+server.Name+"'"] = 0
 	}
 
 	bvid, err := tx.CreateBucketIfNotExists([]byte("Media"))
@@ -74,6 +76,7 @@ func main() {
 					v := plexapi.Video(o)
 					vsn := v.GetServer().Name
 					if v.FID != "" && !strings.HasPrefix(v.FID, "local://") {
+						counts["Video '"+vsn+"'"]++
 						// log.WithField("server", v.GetServer().Name).WithField("guid", v.GUID).WithField("title", v.Title).WithField("viewCount", v.ViewCount).WithField("lastViewedAt", v.LastViewedAt).Info("MEDIA")
 						videos = append(videos, v)
 						data := &plexapi.Data{
@@ -222,4 +225,6 @@ func main() {
 	if err != nil {
 		log.Fatal("DB Commit ", err)
 	}
+
+	fmt.Println("COUNTS: ", util.JSONPrettyPrint(counts))
 }
