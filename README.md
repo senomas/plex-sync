@@ -1,3 +1,3 @@
 # plex-sync
 
-sync plex viewstate across servers 
+sync plex watched state and progress across servers
