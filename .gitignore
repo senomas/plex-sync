@@ -23,5 +23,5 @@ _testmain.go
 *.test
 *.prof
 config.yaml
-plex.db
-plex-sync
+/plex.db
+/plex-sync
