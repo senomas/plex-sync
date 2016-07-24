@@ -1,17 +1,19 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
-
-	_ "github.com/mattn/go-sqlite3"
+	"time"
 
 	"code.senomas.com/go/plexapi"
 	"code.senomas.com/go/util"
 	log "github.com/Sirupsen/logrus"
+	"github.com/boltdb/bolt"
 )
 
 func atoi(v string) int {
@@ -27,18 +29,25 @@ func atoi(v string) int {
 
 func main() {
 	log.SetOutput(os.Stderr)
-	// log.SetLevel(log.InfoLevel)
-	log.SetLevel(log.DebugLevel)
+	log.SetLevel(log.InfoLevel)
+	// log.SetLevel(log.DebugLevel)
 
-	repo := plexapi.Repo{}
-	err := repo.Open()
+	db, err := bolt.Open("./plex.db", 0600, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer repo.Close()
+	defer db.Close()
 
 	api := plexapi.API{HTTP: plexapi.HTTPConfig{Timeout: 30, WorkerSize: 10}}
 	api.LoadConfig("config.yaml")
+
+	now := time.Now().Unix()
+
+	tx, err := db.Begin(true)
+	if err != nil {
+		log.Fatal("DB failed ", err)
+	}
+	defer tx.Rollback()
 
 	var wg sync.WaitGroup
 	out := make(chan interface{})
@@ -49,71 +58,168 @@ func main() {
 		server.GetVideos(&wg, out)
 	}
 
+	bvid, err := tx.CreateBucketIfNotExists([]byte("Media"))
+	if err != nil {
+		log.Fatal("NO Bucket ", err)
+	}
+
 	var videos []plexapi.Video
 	go func() {
 		for o := range out {
-			switch o := o.(type) {
-			case plexapi.Video:
-				v := plexapi.Video(o)
-				if v.FID != "" && !strings.HasPrefix(v.FID, "local://") {
-					// log.WithField("server", v.Server.Name).WithField("guid", v.GUID).WithField("title", v.Title).WithField("viewCount", v.ViewCount).WithField("lastViewedAt", v.LastViewedAt).Info("MEDIA")
+			func() {
+				defer wg.Done()
 
-					videos = append(videos, v)
-					_, err := repo.GetViewStatus(v.Server.Name, v.FID)
-					if err != nil {
-						log.Warn("Error GetMedia ", v.FID, " ", err)
+				switch o := o.(type) {
+				case plexapi.Video:
+					v := plexapi.Video(o)
+					vsn := v.GetServer().Name
+					if v.FID != "" && !strings.HasPrefix(v.FID, "local://") {
+						// log.WithField("server", v.GetServer().Name).WithField("guid", v.GUID).WithField("title", v.Title).WithField("viewCount", v.ViewCount).WithField("lastViewedAt", v.LastViewedAt).Info("MEDIA")
+						videos = append(videos, v)
+						data := &plexapi.Data{
+							Videos:    make(map[string]plexapi.Video),
+							UpdatedAt: make(map[string]int64),
+						}
+
+						bb := bvid.Get([]byte(v.FID))
+						if bb != nil {
+							json.Unmarshal(bb, data)
+						} else {
+							log.Warn("NO DATA ", v.FID)
+						}
+
+						vx, ok := data.Videos[vsn]
+						update := true
+						var vnow int64
+						if ok {
+							bx1, err := json.Marshal(vx)
+							if err != nil {
+								log.Fatal("Marshal ", err)
+							}
+							bx2, err := json.Marshal(v)
+							if err != nil {
+								log.Fatal("Marshal ", err)
+							}
+							if bytes.Equal(bx1, bx2) {
+								update = false
+							} else if v.LastViewedAt != vx.LastViewedAt || v.ViewOffset != vx.ViewOffset {
+								vnow = now
+							} else {
+								if vn, ok := data.UpdatedAt[vsn]; ok {
+									vnow = vn
+								} else {
+									log.Fatal("NO PREVIOUS UPDATED???")
+								}
+							}
+						}
+						if update {
+							data.Videos[vsn] = v
+							data.UpdatedAt[vsn] = vnow
+							bb, err = json.Marshal(data)
+							if err != nil {
+								log.Fatal("Marshal ", err)
+							}
+							err := bvid.Put([]byte(v.FID), bb)
+							if err != nil {
+								log.Fatal("Bucket put ", err)
+							}
+							log.Infof("UPDATE '%s'   %v   %s", v.GetServer().Name, len(data.Videos), v.FID)
+						} else {
+							log.Infof("SKIP '%s'   %s", v.GetServer().Name, v.FID)
+						}
 					}
-					repo.Save(&v)
-					// if media != nil {
-					// 	if atoi(v.UpdatedAt) > atoi(media.UpdatedAt) {
-					// 		repo.Save(&v)
-					// 		log.WithField("server", v.Server.Name).WithField("key", v.Key).WithField("id", v.FID).Info("UPDATE")
-					// 	} else {
-					// 		log.WithField("server", v.Server.Name).WithField("key", v.Key).WithField("id", v.FID).Info("SKIP")
-					// 	}
-					// } else {
-					// 	repo.Save(&v)
-					// 	log.WithField("server", v.Server.Name).WithField("key", v.Key).WithField("id", v.FID).Info("SAVE")
-					// }
+				default:
+					fmt.Printf("Type of o is %T. Value %v", o, o)
 				}
-			default:
-				fmt.Printf("Type of o is %T. Value %v", o, o)
-			}
+			}()
 		}
 	}()
 
 	wg.Wait()
-	fmt.Println()
+	fmt.Print("\n\n\n\n")
 
 	for _, v := range videos {
 		if v.FID != "" && !strings.HasPrefix(v.FID, "local://") {
-			media, err := repo.GetMedia(v.FID)
-			if err != nil {
-				log.Warn("Error GetMedia ", v.FID, " ", err)
+			vsn := v.GetServer().Name
+
+			data := &plexapi.Data{
+				Videos:    make(map[string]plexapi.Video),
+				UpdatedAt: make(map[string]int64),
 			}
-			if media != nil {
-				if atoi(v.UpdatedAt) < atoi(media.UpdatedAt) {
-					mvc, vvc := atoi(media.ViewCount), atoi(v.ViewCount)
-					if mvc > 0 {
-						if mvc != vvc {
-							log.WithField("id", v.FID).WithField("title", v.Title).Infof("NEED UPDATE VIEW-COUNT %v %v %s", mvc, vvc, v.Server.Name)
-						} else {
-							log.WithField("id", v.FID).WithField("title", v.Title).Infof("VIEW-COUNT OK %s", v.Server.Name)
-						}
-					} else {
-						log.WithField("id", v.FID).WithField("title", v.Title).Infof("NEED UPDATE VIEW-OFFSET %v %s", atoi(media.ViewOffset), v.Server.Name)
+
+			bb := bvid.Get([]byte(v.FID))
+			if bb == nil {
+				log.Fatal("No data ", v.FID)
+			}
+			json.Unmarshal(bb, data)
+
+			sn := vsn
+			su := data.UpdatedAt[vsn]
+			for kn, ku := range data.UpdatedAt {
+				if ku > su {
+					sn = kn
+					su = ku
+				} else if ku == su {
+					kv := data.Videos[kn]
+					kvi := atoi(kv.LastViewedAt)
+					svi := atoi(v.LastViewedAt)
+					if kvi > svi {
+						sn = kn
+						su = ku
+					} else if kvi == svi && atoi(kv.ViewCount) > atoi(v.ViewCount) {
+						sn = kn
+						su = ku
 					}
-					// if media.LastViewedAt != "" && v.LastViewedAt == "" {
-					// 	log.WithField("server", v.Server.Name).WithField("id", v.FID).WithField("title", v.Title).Info("MARKED WATCHED")
-					// 	// v.Server.MarkWatched(v)
-					// 	// } else if media.LastViewedAt == "" && v.LastViewedAt != "" {
-					// 	// 	log.WithField("server", v.Server.Name).WithField("guid", v.GUID).WithField("title", v.Title).Info("MARKED UNWATCHED")
-					// 	// 	v.Server.MarkUnwatched(v)
-					// }
 				}
-			} else {
-				log.Fatal("NO MEDIA ", util.JSONPrettyPrint(v))
+			}
+
+			if vsn != sn {
+				update := false
+
+				vn := data.Videos[sn]
+				// log.Info("DATA FINAL ", sn, "  ", vn.FID, "  LV ", atoi(vn.LastViewedAt), "  VC ", atoi(vn.ViewCount), "   VO ", vn.ViewOffset)
+				if atoi(vn.ViewCount) > 0 {
+					if atoi(v.ViewCount) == 0 {
+						v.GetServer().MarkWatched(v.RatingKey)
+						log.Infof("MARK WATCHED '%s' <<%s>> %s", vsn, sn, v.FID)
+						update = true
+					}
+				} else if atoi(vn.ViewOffset) > 0 {
+					if atoi(v.ViewCount) > 0 {
+						v.GetServer().MarkUnwatched(v.RatingKey)
+						log.Infof("MARK UNWATCHED '%s' <<%s>> %s", vsn, sn, v.FID)
+						update = true
+					}
+					if v.ViewOffset != vn.ViewOffset && vn.ViewOffset != "" {
+						v.GetServer().SetViewOffset(v.RatingKey, vn.ViewOffset)
+						log.Infof("UPDATE VIEW-OFFSET '%s' <<%s>> %s", vsn, sn, v.FID)
+						update = true
+					}
+				} else {
+					if atoi(v.ViewCount) > 0 {
+						v.GetServer().MarkUnwatched(v.RatingKey)
+						log.Infof("MARK UNWATCHED '%s' <<%s>> %s", vsn, sn, v.FID)
+						update = true
+					}
+				}
+
+				if update {
+					data.UpdatedAt[vsn] = data.UpdatedAt[sn] - 1
+					bb, err = json.Marshal(data)
+					if err != nil {
+						log.Fatal("Marshal ", err)
+					}
+					err := bvid.Put([]byte(v.FID), bb)
+					if err != nil {
+						log.Fatal("Bucket put ", err)
+					}
+				}
 			}
 		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		log.Fatal("DB Commit ", err)
 	}
 }

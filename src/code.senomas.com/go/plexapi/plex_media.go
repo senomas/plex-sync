@@ -4,7 +4,7 @@ import "encoding/xml"
 
 // Video struct
 type Video struct {
-	Server                *Server   `xml:"-"`
+	server                *Server
 	Keys                  []KeyInfo `xml:"-"`
 	Paths                 []string  `xml:"-"`
 	FID                   string    `xml:"-"`
@@ -101,11 +101,13 @@ type Director struct {
 	Tag     string   `xml:"tag,attr"`
 }
 
-// GetStatus func
-func (v *Video) GetStatus() *ViewStatus {
-	return &ViewStatus{
-		LastViewedAt: v.LastViewedAt,
-		ViewCount:    v.ViewCount,
-		ViewOffset:   v.ViewOffset,
-	}
+// Data struct
+type Data struct {
+	Videos    map[string]Video
+	UpdatedAt map[string]int64
+}
+
+// GetServer func
+func (v *Video) GetServer() *Server {
+	return v.server
 }

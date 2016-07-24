@@ -210,12 +210,14 @@ func (server *Server) GetVideos(wg *sync.WaitGroup, out chan<- interface{}) {
 						}
 					}
 					for _, v := range c.Videos {
-						if v.GUID == "" {
-							meta, err := server.GetMeta(v)
-							util.Panicf("GetMeta failed %v", err)
-							v = meta
-						}
-						v.Server = server
+						// if v.GUID == "" {
+						// 	meta, err := server.GetMeta(v)
+						// 	if err != nil {
+						// 		log.Fatal("GetMeta ", err)
+						// 	}
+						// 	v = meta
+						// }
+						v.server = server
 						v.Paths = c.Paths
 						v.Keys = c.Keys
 						var idx []string
@@ -228,9 +230,11 @@ func (server *Server) GetVideos(wg *sync.WaitGroup, out chan<- interface{}) {
 						}
 						if len(idx) > 0 {
 							v.FID = strings.Join(idx, ":")
+							v.FID = strings.Replace(v.FID, "\\", "/", -1)
 						} else {
 							v.FID = v.GUID
 						}
+						wg.Add(1)
 						out <- v
 					}
 				}()
@@ -315,8 +319,8 @@ func (server *Server) MarkWatched(key string) error {
 // MarkUnwatched func
 func (server *Server) MarkUnwatched(key string) error {
 	url := server.host + "/:/unscrobble?identifier=com.plexapp.plugins.library&key=" + key
-	log.WithField("url", url).WithField("server", server.Name).Debug("GET")
-	req, err := http.NewRequest("MarkUnwatched.GET", url, nil)
+	log.WithField("url", url).WithField("server", server.Name).Debug("MarkUnwatched.GET")
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
 	}
@@ -334,6 +338,32 @@ func (server *Server) MarkUnwatched(key string) error {
 	}
 
 	log.WithField("url", url).WithField("server", server.Name).Debugf("MarkUnwatched.RESULT\n%s", body)
+
+	return err
+}
+
+// SetViewOffset func
+func (server *Server) SetViewOffset(key, offset string) error {
+	url := server.host + "/:/progress?key=" + key + "&identifier=com.plexapp.plugins.library&time=" + offset
+	log.WithField("url", url).WithField("server", server.Name).Debug("SetViewOffset.GET")
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+	server.setHeader(req)
+
+	resp, err := server.api.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	log.WithField("url", url).WithField("server", server.Name).Debugf("SetViewOffset.RESULT\n%s", body)
 
 	return err
 }
