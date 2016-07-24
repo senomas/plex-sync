@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v2"
@@ -161,6 +162,19 @@ func (api *API) GetServers() (servers map[string]*Server, err error) {
 		ns.api = api
 		api.servers[s.Name] = &ns
 	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(api.servers))
+
+	for _, ps := range api.servers {
+		server := ps
+		go func() {
+			server.Check()
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
 	return api.servers, err
 }
 

@@ -68,59 +68,103 @@ func (server *Server) getContainer(url string) (container MediaContainer, err er
 	return container, err
 }
 
+// Check func
+func (server *Server) Check() {
+	var urls []string
+	urls = append(urls, fmt.Sprintf("https://%s:32400", server.Host))
+	for _, la := range strings.Split(server.LocalAddresses, ",") {
+		urls = append(urls, fmt.Sprintf("https://%s:32400", la))
+	}
+
+	var checkOnce util.CheckOnce
+	var wg sync.WaitGroup
+
+	out := make(chan string)
+	defer close(out)
+
+	for _, pu := range urls {
+		url := pu
+		wg.Add(1)
+		go func() error {
+			defer wg.Done()
+
+			if !checkOnce.IsDone() {
+				log.Debugf("CHECK %s %s", server.Name, url)
+				req, err := http.NewRequest("GET", url, nil)
+				if err != nil {
+					log.Debugf("ERROR GET %s '%s': %v", server.Name, url, err)
+					return err
+				}
+				server.setHeader(req)
+				resp, err := server.api.client.Do(req)
+				if err != nil {
+					log.Debugf("ERROR GET %s '%s': %v", server.Name, url, err)
+					return err
+				}
+				defer resp.Body.Close()
+
+				log.Debugf("RESP %s '%s' %s", server.Name, url, resp.Status)
+
+				if resp.StatusCode == 200 {
+					checkOnce.Done(func() {
+						out <- url
+					})
+				}
+			}
+			return nil
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		checkOnce.Done(func() {
+			out <- ""
+		})
+	}()
+
+	server.host = <-out
+	log.Debugf("URL %s  %s", server.Name, server.host)
+}
+
 // Perform func
 func (server *Server) Perform(cmd, path string) error {
-	url := server.host + path
-	log.WithField("url", url).Debugf(cmd)
-	req, err := http.NewRequest(cmd, url, nil)
-	if err != nil {
-		log.WithField("url", url).WithError(err).Errorf("http.%s", cmd)
+	if server.host != "" {
+		url := server.host + path
+		log.WithField("url", url).Debugf(cmd)
+		req, err := http.NewRequest(cmd, url, nil)
+		if err != nil {
+			log.WithField("url", url).WithError(err).Errorf("http.%s", cmd)
+			return err
+		}
+		server.setHeader(req)
+
+		resp, err := server.api.client.Do(req)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		log.WithField("url", url).WithField("status", resp.Status).Debugf("RESP")
+
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.WithField("url", url).WithError(err).Errorf("RESP")
+			return err
+		}
+
+		log.Debugf("RESP BODY\n%s", body)
 		return err
 	}
-	server.setHeader(req)
-
-	resp, err := server.api.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	log.WithField("url", url).WithField("status", resp.Status).Debugf("RESP")
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.WithField("url", url).WithError(err).Errorf("RESP")
-		return err
-	}
-
-	log.Debugf("RESP BODY\n%s", body)
-	return err
+	return fmt.Errorf("NO HOST")
 }
 
 // GetContainer func
 func (server *Server) GetContainer(path string) (container MediaContainer, err error) {
 	if server.host != "" {
 		container, err = server.getContainer(server.host + path)
-		if err == nil {
-			return container, err
-		}
+		return container, err
 	}
-	for _, la := range strings.Split(server.LocalAddresses, ",") {
-		host := fmt.Sprintf("https://%s:32400", la)
-		container, err = server.getContainer(host + path)
-		if err == nil {
-			server.host = host
-			return container, err
-		}
-	}
-	host := fmt.Sprintf("https://%s:32400", server.Host)
-	container, err = server.getContainer(host + path)
-	if err == nil {
-		server.host = host
-	}
-	// host := fmt.Sprintf("%s://%s:%v", server.Scheme, server.Host, server.Port)
-	// container, err = server.getContainer(host + path)
-	return container, err
+	return container, fmt.Errorf("NO HOST")
 }
 
 // GetDirectories func
@@ -157,11 +201,13 @@ func (server *Server) GetVideos(wg *sync.WaitGroup, out chan<- interface{}) {
 				func() {
 					defer wg.Done()
 					for _, d := range c.Directories {
-						wg.Add(1)
-						d.Paths = c.Paths
-						d.Keys = c.Keys
-						d.Keys = append(d.Keys, KeyInfo{Key: d.Key, Type: d.Type, Title: d.Title})
-						dirs <- d
+						if d.Type == "movie" {
+							wg.Add(1)
+							d.Paths = c.Paths
+							d.Keys = c.Keys
+							d.Keys = append(d.Keys, KeyInfo{Key: d.Key, Type: d.Type, Title: d.Title})
+							dirs <- d
+						}
 					}
 					for _, v := range c.Videos {
 						if v.GUID == "" {
@@ -242,8 +288,8 @@ func (server *Server) GetMeta(video Video) (meta Video, err error) {
 }
 
 // MarkWatched func
-func (server *Server) MarkWatched(video Video) error {
-	url := server.host + "/:/scrobble?identifier=com.plexapp.plugins.library&key=" + video.RatingKey
+func (server *Server) MarkWatched(key string) error {
+	url := server.host + "/:/scrobble?identifier=com.plexapp.plugins.library&key=" + key
 	log.WithField("url", url).WithField("server", server.Name).Debug("MarkWatched.GET")
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -267,8 +313,8 @@ func (server *Server) MarkWatched(video Video) error {
 }
 
 // MarkUnwatched func
-func (server *Server) MarkUnwatched(video Video) error {
-	url := server.host + "/:/unscrobble?identifier=com.plexapp.plugins.library&key=" + video.RatingKey
+func (server *Server) MarkUnwatched(key string) error {
+	url := server.host + "/:/unscrobble?identifier=com.plexapp.plugins.library&key=" + key
 	log.WithField("url", url).WithField("server", server.Name).Debug("GET")
 	req, err := http.NewRequest("MarkUnwatched.GET", url, nil)
 	if err != nil {

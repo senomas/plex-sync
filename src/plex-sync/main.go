@@ -27,8 +27,8 @@ func atoi(v string) int {
 
 func main() {
 	log.SetOutput(os.Stderr)
-	log.SetLevel(log.InfoLevel)
-	// log.SetLevel(log.DebugLevel)
+	// log.SetLevel(log.InfoLevel)
+	log.SetLevel(log.DebugLevel)
 
 	repo := plexapi.Repo{}
 	err := repo.Open()
@@ -59,21 +59,22 @@ func main() {
 					// log.WithField("server", v.Server.Name).WithField("guid", v.GUID).WithField("title", v.Title).WithField("viewCount", v.ViewCount).WithField("lastViewedAt", v.LastViewedAt).Info("MEDIA")
 
 					videos = append(videos, v)
-					media, err := repo.GetMedia(v.FID)
+					_, err := repo.GetViewStatus(v.Server.Name, v.FID)
 					if err != nil {
 						log.Warn("Error GetMedia ", v.FID, " ", err)
 					}
-					if media != nil {
-						if atoi(v.UpdatedAt) > atoi(media.UpdatedAt) {
-							repo.Save(&v)
-							log.WithField("server", v.Server.Name).WithField("key", v.Key).WithField("id", v.FID).Info("UPDATE")
-						} else {
-							log.WithField("server", v.Server.Name).WithField("key", v.Key).WithField("id", v.FID).Info("SKIP")
-						}
-					} else {
-						repo.Save(&v)
-						log.WithField("server", v.Server.Name).WithField("key", v.Key).WithField("id", v.FID).Info("SAVE")
-					}
+					repo.Save(&v)
+					// if media != nil {
+					// 	if atoi(v.UpdatedAt) > atoi(media.UpdatedAt) {
+					// 		repo.Save(&v)
+					// 		log.WithField("server", v.Server.Name).WithField("key", v.Key).WithField("id", v.FID).Info("UPDATE")
+					// 	} else {
+					// 		log.WithField("server", v.Server.Name).WithField("key", v.Key).WithField("id", v.FID).Info("SKIP")
+					// 	}
+					// } else {
+					// 	repo.Save(&v)
+					// 	log.WithField("server", v.Server.Name).WithField("key", v.Key).WithField("id", v.FID).Info("SAVE")
+					// }
 				}
 			default:
 				fmt.Printf("Type of o is %T. Value %v", o, o)
@@ -92,14 +93,26 @@ func main() {
 			}
 			if media != nil {
 				if atoi(v.UpdatedAt) < atoi(media.UpdatedAt) {
-					if media.LastViewedAt != "" && v.LastViewedAt == "" {
-						log.WithField("server", v.Server.Name).WithField("id", v.FID).WithField("title", v.Title).Info("MARKED WATCHED")
-						v.Server.MarkWatched(v)
-						// } else if media.LastViewedAt == "" && v.LastViewedAt != "" {
-						// 	log.WithField("server", v.Server.Name).WithField("guid", v.GUID).WithField("title", v.Title).Info("MARKED UNWATCHED")
-						// 	v.Server.MarkUnwatched(v)
+					mvc, vvc := atoi(media.ViewCount), atoi(v.ViewCount)
+					if mvc > 0 {
+						if mvc != vvc {
+							log.WithField("id", v.FID).WithField("title", v.Title).Infof("NEED UPDATE VIEW-COUNT %v %v %s", mvc, vvc, v.Server.Name)
+						} else {
+							log.WithField("id", v.FID).WithField("title", v.Title).Infof("VIEW-COUNT OK %s", v.Server.Name)
+						}
+					} else {
+						log.WithField("id", v.FID).WithField("title", v.Title).Infof("NEED UPDATE VIEW-OFFSET %v %s", atoi(media.ViewOffset), v.Server.Name)
 					}
+					// if media.LastViewedAt != "" && v.LastViewedAt == "" {
+					// 	log.WithField("server", v.Server.Name).WithField("id", v.FID).WithField("title", v.Title).Info("MARKED WATCHED")
+					// 	// v.Server.MarkWatched(v)
+					// 	// } else if media.LastViewedAt == "" && v.LastViewedAt != "" {
+					// 	// 	log.WithField("server", v.Server.Name).WithField("guid", v.GUID).WithField("title", v.Title).Info("MARKED UNWATCHED")
+					// 	// 	v.Server.MarkUnwatched(v)
+					// }
 				}
+			} else {
+				log.Fatal("NO MEDIA ", util.JSONPrettyPrint(v))
 			}
 		}
 	}

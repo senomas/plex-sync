@@ -100,3 +100,12 @@ type Director struct {
 	XMLName xml.Name `xml:"Director"`
 	Tag     string   `xml:"tag,attr"`
 }
+
+// GetStatus func
+func (v *Video) GetStatus() *ViewStatus {
+	return &ViewStatus{
+		LastViewedAt: v.LastViewedAt,
+		ViewCount:    v.ViewCount,
+		ViewOffset:   v.ViewOffset,
+	}
+}
