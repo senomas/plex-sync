@@ -86,76 +86,74 @@ func main() {
 	var videos []plexapi.Video
 	go func() {
 		for o := range out {
-			func() {
-				defer wg.Done()
+			switch o := o.(type) {
+			case plexapi.Video:
+				v := plexapi.Video(o)
+				vsn := v.GetServer().Name
+				if v.FID != "" && !strings.HasPrefix(v.FID, "local://") {
+					counts["Video '"+vsn+"'"]++
+					// log.WithField("server", v.GetServer().Name).WithField("guid", v.GUID).WithField("title", v.Title).WithField("viewCount", v.ViewCount).WithField("lastViewedAt", v.LastViewedAt).Info("MEDIA")
+					videos = append(videos, v)
+					data := &plexapi.Data{
+						Videos:    make(map[string]plexapi.Video),
+						UpdatedAt: make(map[string]int64),
+					}
 
-				switch o := o.(type) {
-				case plexapi.Video:
-					v := plexapi.Video(o)
-					vsn := v.GetServer().Name
-					if v.FID != "" && !strings.HasPrefix(v.FID, "local://") {
-						counts["Video '"+vsn+"'"]++
-						// log.WithField("server", v.GetServer().Name).WithField("guid", v.GUID).WithField("title", v.Title).WithField("viewCount", v.ViewCount).WithField("lastViewedAt", v.LastViewedAt).Info("MEDIA")
-						videos = append(videos, v)
-						data := &plexapi.Data{
-							Videos:    make(map[string]plexapi.Video),
-							UpdatedAt: make(map[string]int64),
-						}
+					bb := bvid.Get([]byte(v.FID))
+					if bb != nil {
+						json.Unmarshal(bb, data)
+					}
 
-						bb := bvid.Get([]byte(v.FID))
-						if bb != nil {
-							json.Unmarshal(bb, data)
+					vx, ok := data.Videos[vsn]
+					update := true
+					var vnow int64
+					if ok {
+						var bx1, bx2 []byte
+						bx1, err = json.Marshal(vx)
+						if err != nil {
+							log.Fatal("Marshal ", err)
 						}
-
-						vx, ok := data.Videos[vsn]
-						update := true
-						var vnow int64
-						if ok {
-							var bx1, bx2 []byte
-							bx1, err = json.Marshal(vx)
-							if err != nil {
-								log.Fatal("Marshal ", err)
-							}
-							bx2, err = json.Marshal(v)
-							if err != nil {
-								log.Fatal("Marshal ", err)
-							}
-							if bytes.Equal(bx1, bx2) {
-								update = false
-							} else if v.LastViewedAt != vx.LastViewedAt || v.ViewOffset != vx.ViewOffset {
-								vnow = now
-							} else {
-								if vn, ok := data.UpdatedAt[vsn]; ok {
-									vnow = vn
-								} else {
-									log.Fatal("NO PREVIOUS UPDATED???")
-								}
-							}
+						bx2, err = json.Marshal(v)
+						if err != nil {
+							log.Fatal("Marshal ", err)
 						}
-						if update {
-							data.Videos[vsn] = v
-							data.UpdatedAt[vsn] = vnow
-							bb, err = json.Marshal(data)
-							if err != nil {
-								log.Fatal("Marshal ", err)
-							}
-							err := bvid.Put([]byte(v.FID), bb)
-							if err != nil {
-								log.Fatal("Bucket put ", err)
-							}
-							log.Infof("UPDATE '%s'   %v   %s", v.GetServer().Name, len(data.Videos), v.FID)
+						if bytes.Equal(bx1, bx2) {
+							update = false
+						} else if v.LastViewedAt != vx.LastViewedAt || v.ViewOffset != vx.ViewOffset {
+							vnow = now
 						} else {
-							log.Infof("SKIP '%s'   %s", v.GetServer().Name, v.FID)
+							if vn, ok := data.UpdatedAt[vsn]; ok {
+								vnow = vn
+							} else {
+								log.Fatal("NO PREVIOUS UPDATED???")
+							}
 						}
 					}
-				default:
-					fmt.Printf("Type of o is %T. Value %v", o, o)
+					if update {
+						data.Videos[vsn] = v
+						data.UpdatedAt[vsn] = vnow
+						bb, err = json.Marshal(data)
+						if err != nil {
+							log.Fatal("Marshal ", err)
+						}
+						err := bvid.Put([]byte(v.FID), bb)
+						if err != nil {
+							log.Fatal("Bucket put ", err)
+						}
+						log.Infof("UPDATE '%s'   %v   %s", v.GetServer().Name, len(data.Videos), v.FID)
+					} else {
+						log.Infof("SKIP '%s'   %s", v.GetServer().Name, v.FID)
+					}
 				}
-			}()
+			default:
+				fmt.Printf("Type of o is %T. Value %v", o, o)
+			}
+			wg.Done()
 		}
 	}()
 
 	wg.Wait()
+	close(out)
 	fmt.Print("\n\n\n\n")
 
 	for _, v := range videos {
