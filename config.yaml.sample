@@ -1,5 +1,0 @@
-user: seno
-password: secure
-http:
-  timeout: 10
-  workerSize: 10

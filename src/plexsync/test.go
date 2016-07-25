@@ -2,13 +2,15 @@ package main
 
 import (
 	"os"
+	"testing"
 
 	"code.senomas.com/go/plexapi"
 	log "github.com/Sirupsen/logrus"
 	_ "github.com/mattn/go-sqlite3"
 )
 
-func main() {
+// TestSimple func
+func TestSimple(t *testing.T) {
 	log.SetOutput(os.Stderr)
 	log.SetLevel(log.DebugLevel)
 

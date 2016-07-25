@@ -2,13 +2,15 @@ package main
 
 import (
 	"os"
+	"testing"
 	"time"
 
 	"code.senomas.com/go/util"
 	log "github.com/Sirupsen/logrus"
 )
 
-func main() {
+// TestRoutine func
+func TestRoutine(t *testing.T) {
 	log.SetOutput(os.Stderr)
 	log.SetLevel(log.InfoLevel)
 

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,17 +31,31 @@ func atoi(v string) int {
 
 func main() {
 	log.SetOutput(os.Stderr)
-	log.SetLevel(log.InfoLevel)
-	// log.SetLevel(log.DebugLevel)
+	// log.SetLevel(log.InfoLevel)
+	log.SetLevel(log.DebugLevel)
 
-	db, err := bolt.Open("./plex.db", 0600, nil)
+	usr, err := user.Current()
+	if err != nil {
+		log.Fatal(err)
+	}
+	cpath := filepath.Join(usr.HomeDir, ".plexsync")
+	os.MkdirAll(cpath, 0700)
+
+	api := plexapi.API{HTTP: plexapi.HTTPConfig{Timeout: 30, WorkerSize: 10}}
+	err = api.LoadConfig(filepath.Join(cpath, "config.yaml"))
+	if err != nil {
+		api.User = "user"
+		api.Password = "secure"
+		api.SaveConfig(filepath.Join(cpath, "config.yaml"))
+		fmt.Printf("Create default config. Edit '%s' to continue\n", filepath.Join(cpath, "config.yaml"))
+		os.Exit(1)
+	}
+
+	db, err := bolt.Open(filepath.Join(cpath, "plex.db"), 0600, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
-
-	api := plexapi.API{HTTP: plexapi.HTTPConfig{Timeout: 30, WorkerSize: 10}}
-	api.LoadConfig("config.yaml")
 
 	now := time.Now().Unix()
 
@@ -54,7 +70,9 @@ func main() {
 	counts := make(map[string]int)
 
 	servers, err := api.GetServers()
-	util.Panicf("GetServers failed %v", err)
+	if err != nil {
+		log.Fatal("GetServers ", err)
+	}
 	for _, server := range servers {
 		server.GetVideos(&wg, out)
 		counts["Video '"+server.Name+"'"] = 0
