@@ -31,8 +31,8 @@ func atoi(v string) int {
 
 func main() {
 	log.SetOutput(os.Stderr)
-	// log.SetLevel(log.InfoLevel)
-	log.SetLevel(log.DebugLevel)
+	log.SetLevel(log.InfoLevel)
+	// log.SetLevel(log.DebugLevel)
 
 	usr, err := user.Current()
 	if err != nil {
@@ -111,11 +111,12 @@ func main() {
 						update := true
 						var vnow int64
 						if ok {
-							bx1, err := json.Marshal(vx)
+							var bx1, bx2 []byte
+							bx1, err = json.Marshal(vx)
 							if err != nil {
 								log.Fatal("Marshal ", err)
 							}
-							bx2, err := json.Marshal(v)
+							bx2, err = json.Marshal(v)
 							if err != nil {
 								log.Fatal("Marshal ", err)
 							}
@@ -200,24 +201,24 @@ func main() {
 				if atoi(vn.ViewCount) > 0 {
 					if atoi(v.ViewCount) == 0 {
 						v.GetServer().MarkWatched(v.RatingKey)
-						log.Infof("MARK WATCHED '%s' <<%s>> %s", vsn, sn, v.FID)
+						log.Infof("MARK WATCHED '%s' FROM '%s' - %s", vsn, sn, v.FID)
 						update = true
 					}
 				} else if atoi(vn.ViewOffset) > 0 {
 					if atoi(v.ViewCount) > 0 {
 						v.GetServer().MarkUnwatched(v.RatingKey)
-						log.Infof("MARK UNWATCHED '%s' <<%s>> %s", vsn, sn, v.FID)
+						log.Infof("MARK UNWATCHED '%s' FROM '%s' - %s", vsn, sn, v.FID)
 						update = true
 					}
 					if v.ViewOffset != vn.ViewOffset && vn.ViewOffset != "" {
 						v.GetServer().SetViewOffset(v.RatingKey, vn.ViewOffset)
-						log.Infof("UPDATE VIEW-OFFSET '%s' <<%s>> %s", vsn, sn, v.FID)
+						log.Infof("UPDATE VIEW-OFFSET '%s' FROM '%s' - %s", vsn, sn, v.FID)
 						update = true
 					}
 				} else {
 					if atoi(v.ViewCount) > 0 {
 						v.GetServer().MarkUnwatched(v.RatingKey)
-						log.Infof("MARK UNWATCHED '%s' <<%s>> %s", vsn, sn, v.FID)
+						log.Infof("MARK UNWATCHED '%s' FROM '%s' - %s", vsn, sn, v.FID)
 						update = true
 					}
 				}
