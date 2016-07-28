@@ -6,7 +6,6 @@ import (
 
 	"code.senomas.com/go/plexapi"
 	log "github.com/Sirupsen/logrus"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 // TestSimple func
