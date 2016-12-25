@@ -30,7 +30,7 @@ func atoi(v string) int {
 }
 
 func main() {
-	log.SetOutput(os.Stderr)
+	log.SetOutput(os.Stdout)
 	log.SetLevel(log.InfoLevel)
 	// log.SetLevel(log.DebugLevel)
 
