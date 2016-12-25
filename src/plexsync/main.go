@@ -34,7 +34,10 @@ func main() {
 	log.SetLevel(log.InfoLevel)
 	// log.SetLevel(log.DebugLevel)
 
-	usr, err := user.Current()
+	var usr *user.User
+	var err error
+
+	usr, err = user.Current()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -51,7 +54,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, err := bolt.Open(filepath.Join(cpath, "plex.db"), 0600, nil)
+	var db *bolt.DB
+	if api.DB != "" {
+		db, err = bolt.Open(filepath.Join(api.DB, "plex.db"), 0600, nil)
+	} else {
+		db, err = bolt.Open(filepath.Join(cpath, "plex.db"), 0600, nil)
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -136,8 +144,7 @@ func main() {
 						if err != nil {
 							log.Fatal("Marshal ", err)
 						}
-						err := bvid.Put([]byte(v.FID), bb)
-						if err != nil {
+						if err = bvid.Put([]byte(v.FID), bb); err != nil {
 							log.Fatal("Bucket put ", err)
 						}
 						log.Infof("UPDATE '%s'   %v   %s", v.GetServer().Name, len(data.Videos), v.FID)
@@ -227,8 +234,7 @@ func main() {
 					if err != nil {
 						log.Fatal("Marshal ", err)
 					}
-					err := bvid.Put([]byte(v.FID), bb)
-					if err != nil {
+					if err = bvid.Put([]byte(v.FID), bb); err != nil {
 						log.Fatal("Bucket put ", err)
 					}
 				}
